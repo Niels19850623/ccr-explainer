@@ -139,9 +139,22 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;heigh
 input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.08)}
 input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid var(--accent);cursor:pointer}
 input[type=range]:focus-visible{box-shadow:0 0 0 3px var(--mist)}
-.rate-now{text-align:center;margin:18px 0 24px;font-family:var(--mono)}
-.rate-now .big{font-size:30px;font-weight:600;color:var(--ink)}
-.rate-now .lbl{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);display:block;margin-top:2px}
+.fx{margin:20px 0 26px}
+.fx-quote{display:flex;align-items:baseline;justify-content:center;gap:9px;font-family:var(--mono)}
+.fx-side{font-size:15px;color:var(--mute);font-weight:600}
+.fx-unit{align-self:center}
+.fx-eq{font-size:20px;color:var(--mute)}
+.fx-rate{font-size:42px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;transition:color .25s ease;letter-spacing:-.01em}
+.fx-dir{text-align:center;font-size:13px;font-weight:600;margin:8px auto 0;width:max-content;padding:4px 13px;border-radius:999px;background:var(--mist);color:var(--ink-soft);transition:background .25s,color .25s;letter-spacing:.01em}
+.fx-dir.strong{background:#e3f0fa;color:var(--accent-deep)}
+.fx-dir.weak{background:#f7ecdf;color:var(--amber)}
+.fx-meter{position:relative;height:9px;max-width:560px;margin:24px auto 0;background:#eef2f5;border-radius:6px}
+.fx-meter-start{position:absolute;left:44.4%;top:-4px;bottom:-4px;width:2px;background:#c3ccd3;transform:translateX(-50%)}
+.fx-meter-fill{position:absolute;top:0;bottom:0;left:44.4%;width:0;border-radius:6px;background:var(--accent);transition:left .16s ease,width .16s ease,background .2s ease}
+.fx-meter-mark{position:absolute;top:50%;left:44.4%;width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid var(--accent);box-shadow:0 2px 7px rgba(15,76,122,.32);transform:translate(-50%,-50%);transition:left .16s ease,border-color .2s ease}
+.fx-ticks{position:relative;max-width:560px;margin:9px auto 0;height:16px;font-family:var(--mono)}
+.fx-tk{position:absolute;transform:translateX(-50%);font-size:11.5px;color:var(--mute);font-weight:600}
+.fx-tk::before{content:"";position:absolute;top:-12px;left:50%;width:1px;height:6px;background:var(--hair)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:8px}
 @media(max-width:620px){.grid2{grid-template-columns:1fr}}
 .panel{border:1px solid var(--hair);border-radius:12px;padding:18px}
@@ -377,7 +390,25 @@ footer a{color:var(--mute);text-decoration:underline}
       <p class="hint">Drag the slider and watch the provider&rsquo;s exposure and the company&rsquo;s health move in opposite directions.</p>
       <div class="slider-ends"><span>&larr; Shilling weaker</span><span>Shilling stronger &rarr;</span></div>
       <input id="sl" type="range" min="-40" max="50" value="0" step="1" aria-label="Exchange rate, shilling weaker to stronger">
-      <div class="rate-now"><span id="rate" class="big">120</span><span class="lbl">KES per USD &middot; <span id="move">at the starting rate</span></span></div>
+      <div class="fx">
+        <div class="fx-quote">
+          <span class="fx-side">USD&nbsp;1</span>
+          <span class="fx-eq">=</span>
+          <span id="rate" class="fx-rate">120.0</span>
+          <span class="fx-side fx-unit">KES</span>
+        </div>
+        <div id="fxdir" class="fx-dir start">at the starting rate</div>
+        <div class="fx-meter">
+          <span class="fx-meter-start"></span>
+          <div id="fxfill" class="fx-meter-fill"></div>
+          <div id="fxmark" class="fx-meter-mark"></div>
+        </div>
+        <div class="fx-ticks">
+          <span class="fx-tk" style="left:16.7%">160</span>
+          <span class="fx-tk" style="left:44.4%">120</span>
+          <span class="fx-tk" style="left:66.7%">100</span>
+        </div>
+      </div>
       <div class="grid2">
         <div class="panel">
           <p class="k">Value of the swap to the provider</p>
@@ -492,22 +523,38 @@ document.addEventListener('scroll',onScroll,{passive:true});onScroll();
 var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.16});
 document.querySelectorAll('.reveal').forEach(function(el){io.observe(el);});
 
-var sl=document.getElementById('sl'),rate=document.getElementById('rate'),move=document.getElementById('move'),
+var sl=document.getElementById('sl'),rate=document.getElementById('rate'),
+    fxdir=document.getElementById('fxdir'),fxmark=document.getElementById('fxmark'),fxfill=document.getElementById('fxfill'),
     valnum=document.getElementById('valnum'),valsub=document.getElementById('valsub'),fill=document.getElementById('fill'),
     face=document.getElementById('face'),compsub=document.getElementById('compsub'),guar=document.getElementById('guar'),
     insight=document.getElementById('insight');
-var ACC='#1A6FAD',GRY='#9aa6ae',INCEPT=120;
+var ACC='#1A6FAD',GRY='#9aa6ae',AMB='#C2772E',INCEPT=120,START_POS=44.4444;
+var dispRate=120,targetRate=120,rafId=null;
+function rollRate(){
+  var d=targetRate-dispRate;
+  if(Math.abs(d)<0.04){dispRate=targetRate;rate.textContent=dispRate.toFixed(1);rafId=null;return;}
+  dispRate+=d*0.3;
+  rate.textContent=dispRate.toFixed(1);
+  rafId=requestAnimationFrame(rollRate);
+}
 function fmt(n){return (n<0?'\u2212':'+')+'USD '+Math.abs(n).toFixed(0)+'m';}
 function update(){
   var s=parseInt(sl.value,10);
   var r=INCEPT/(1+s/100);
-  rate.textContent=r.toFixed(0);
+  targetRate=r; if(!rafId) rafId=requestAnimationFrame(rollRate);
+  var pos=(s+40)/90*100;
+  fxmark.style.left=pos+'%';
+  if(s>0){ fxfill.style.left=START_POS+'%'; fxfill.style.width=(pos-START_POS)+'%'; fxfill.style.background=ACC; fxmark.style.borderColor=ACC;
+    fxdir.textContent='\u25BC '+s+'% stronger'; fxdir.className='fx-dir strong'; rate.style.color=ACC; }
+  else if(s<0){ fxfill.style.left=pos+'%'; fxfill.style.width=(START_POS-pos)+'%'; fxfill.style.background=AMB; fxmark.style.borderColor=AMB;
+    fxdir.textContent='\u25B2 '+Math.abs(s)+'% weaker'; fxdir.className='fx-dir weak'; rate.style.color=AMB; }
+  else{ fxfill.style.width='0'; fxmark.style.borderColor=ACC;
+    fxdir.textContent='at the starting rate'; fxdir.className='fx-dir start'; rate.style.color='var(--ink)'; }
   if(s===0){valnum.textContent='USD 0';valnum.style.color='var(--ink)';}
   else{valnum.textContent=fmt(s);valnum.style.color=(s>0?ACC:'var(--mute)');}
   var half=Math.min(Math.abs(s)/50,1)*50;
   if(s>=0){fill.style.left='50%';fill.style.right='auto';fill.style.width=half+'%';fill.style.background=ACC;}
   else{fill.style.right='50%';fill.style.left='auto';fill.style.width=half+'%';fill.style.background=GRY;}
-  move.textContent = s>0 ? (s+'% stronger than the start') : s<0 ? (Math.abs(s)+'% weaker than the start') : 'at the starting rate';
   if(s>0){
     valsub.textContent='The provider is owed money. This is the exposure the guarantee can cover.';
     face.textContent='Comfortable';face.style.color=ACC;
